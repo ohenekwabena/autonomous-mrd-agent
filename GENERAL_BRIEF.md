@@ -69,13 +69,7 @@
 - **Reuse validation gates**: Update `can_transition_to_synthesis` thresholds to reflect SaaS-critical signals (e.g., competitor pricing, ARR benchmarks). Keep hallucination controls identical.
 - **Benefit**: Only the task catalog and tool adapters change; the FSM, safety rails, and MRD schema continue to enforce structure and data quality.
 
-## Likely interview questions & crisp answers
-- **Why FSM over prompt chaining?** Deterministic, auditable transitions with readiness checks stop premature synthesis and reduce hallucinations.
-- **How do you know you have enough data?** `ResearchAggregate.calculate_completeness` plus critical-section checks in `can_transition_to_synthesis` gate progress.
-- **What if a tool is down or returns empty?** Retries via `execute_with_retry`; mark task failed; completeness drops; FSM holds in Research; no synthetic data is fabricated.
-- **How do you ensure every claim is sourced?** `VerifiedClaim` requires citations; HIGH confidence enforces ≥2 sources; validators throw if missing.
-- **Where is HITL?** After plan generation (approve/modify tasks) and after MRD validation (`HUMAN_REVIEW` state).
-- **How to pivot to SaaS?** Swap `ResearchTask` catalog and add SaaS agents; keep FSM, validation, and MRD schema intact.
+
 
 ## One-line rationale
 Structured FSM + Pydantic-first contracts = deterministic, auditable, and citation-backed MRDs that can swap verticals with minimal change.
