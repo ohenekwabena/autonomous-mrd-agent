@@ -92,22 +92,23 @@ async def planning_handler(ctx:  OrchestratorContext) -> OrchestratorContext:
 
 async def research_handler(ctx:  OrchestratorContext) -> OrchestratorContext: 
     """
-    Execute research tasks using specialized agents.
+    Execute research tasks using specialized agents concurrently.
     """
-    print("[RESEARCH] Starting research phase...")
+    print("[RESEARCH] Starting research phase (concurrent execution)...")
     
     toolkit = MockToolkit()
     
     # Initialize aggregate if not exists
     if ctx.research_aggregate is None:
         ctx.research_aggregate = ResearchAggregate(
-            plan_id=ctx. research_plan.plan_id
+            plan_id=ctx.research_plan.plan_id
         )
     
-    # Execute each task
-    for task in ctx.research_plan.tasks:
-        if task.task_id in [t for t in ctx.research_aggregate.failed_tasks]:
-            continue  # Skip already failed tasks
+    # Create coroutines for each task
+    async def execute_task(task: ResearchTask):
+        """Execute a single task and return (task_id, result, error)"""
+        if task.task_id in ctx.research_aggregate.failed_tasks:
+            return (task.task_id, None, "Already failed")
         
         print(f"[RESEARCH] Executing task: {task.task_id}")
         
@@ -115,47 +116,80 @@ async def research_handler(ctx:  OrchestratorContext) -> OrchestratorContext:
             if task.task_type == "competitor": 
                 agent = CompetitorAnalysisAgent(toolkit)
                 competitors = await agent.run(task)
-                ctx.research_aggregate.competitors.extend(competitors)
+                return (task.task_id, ("competitor", competitors), None)
                 
             elif task.task_type == "sentiment":
                 agent = SentimentAnalysisAgent(toolkit)
+                results = []
                 for entity in task.target_entities:
                     result = await agent.analyze_platform("tiktok", entity)
                     if result:
-                        ctx.research_aggregate. sentiment_analyses.append(result)
+                        results.append(result)
+                return (task.task_id, ("sentiment", results), None)
                         
             elif task.task_type == "regulatory": 
                 agent = RegulatoryAnalysisAgent(toolkit)
+                results = []
                 for region in task.target_entities:
                     result = await agent.check_region(region)
                     if result:
-                        ctx.research_aggregate. regulatory_statuses.append(result)
+                        results.append(result)
+                return (task.task_id, ("regulatory", results), None)
                         
             elif task.task_type == "gap_analysis":
                 # Mock gap analysis results
-                ctx.research_aggregate.gap_analysis. append(
-                    GapAnalysisItem(
-                        opportunity="Agar.io-style games",
-                        current_market_state="Popular IO game not offered by Triumph",
-                        potential_value="high",
-                        implementation_complexity="medium",
-                        supporting_evidence=[
-                            VerifiedClaim(
-                                claim="Agar.io has 50M+ downloads on mobile",
-                                confidence=ConfidenceLevel. MEDIUM,
-                                citations=[Citation(source=DataSource.WEB_SEARCH)]
-                            )
-                        ]
-                    )
+                gap_item = GapAnalysisItem(
+                    opportunity="Agar.io-style games",
+                    current_market_state="Popular IO game not offered by Triumph",
+                    potential_value="high",
+                    implementation_complexity="medium",
+                    supporting_evidence=[
+                        VerifiedClaim(
+                            claim="Agar.io has 50M+ downloads on mobile",
+                            confidence=ConfidenceLevel.MEDIUM,
+                            citations=[Citation(source=DataSource.WEB_SEARCH)]
+                        )
+                    ]
                 )
+                return (task.task_id, ("gap_analysis", [gap_item]), None)
+            
+            return (task.task_id, None, "Unknown task type")
                 
         except Exception as e: 
-            ctx.research_aggregate.failed_tasks.append(task.task_id)
-            ctx.errors.append(f"Task {task.task_id} failed: {str(e)}")
+            return (task.task_id, None, str(e))
+    
+    # Execute all tasks concurrently
+    task_coroutines = [execute_task(task) for task in ctx.research_plan.tasks]
+    results = await asyncio.gather(*task_coroutines, return_exceptions=True)
+    
+    # Process results
+    for result in results:
+        if isinstance(result, Exception):
+            ctx.errors.append(f"Unexpected error: {str(result)}")
+            continue
+            
+        task_id, data, error = result
+        
+        if error:
+            ctx.research_aggregate.failed_tasks.append(task_id)
+            ctx.errors.append(f"Task {task_id} failed: {error}")
+            continue
+        
+        if data:
+            task_type, task_results = data
+            if task_type == "competitor":
+                ctx.research_aggregate.competitors.extend(task_results)
+            elif task_type == "sentiment":
+                ctx.research_aggregate.sentiment_analyses.extend(task_results)
+            elif task_type == "regulatory":
+                ctx.research_aggregate.regulatory_statuses.extend(task_results)
+            elif task_type == "gap_analysis":
+                ctx.research_aggregate.gap_analysis.extend(task_results)
     
     # Calculate completeness
     completeness = ctx.research_aggregate.calculate_completeness()
     print(f"[RESEARCH] Data completeness: {completeness:.1%}")
+    print(f"[RESEARCH] Completed {len(ctx.research_plan.tasks) - len(ctx.research_aggregate.failed_tasks)}/{len(ctx.research_plan.tasks)} tasks")
     
     return ctx
 
