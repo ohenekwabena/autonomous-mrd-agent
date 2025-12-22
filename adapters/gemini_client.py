@@ -6,7 +6,7 @@ from google import genai
 from google.genai import types
 
 class GeminiClient:
-    def __init__(self, model: str = "gemini-2.0-flash-exp", api_key_env: str = "GEMINI_API_KEY"):
+    def __init__(self, model: str = "gemini-2.0-flash-001", api_key_env: str = "GEMINI_API_KEY"):
         api_key = os.environ.get(api_key_env)
         if not api_key:
             raise ValueError(f"Environment variable {api_key_env} not set")
