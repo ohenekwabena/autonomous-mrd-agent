@@ -6,7 +6,7 @@ Implements fallback ladders for tool failures.
 from __future__ import annotations
 import asyncio
 from typing import Optional, Callable, Awaitable
-from datetime import datetime
+from datetime import datetime, timezone
 
 from models.core import (
     ResearchTask, ResearchAggregate, CompetitorProfile, MarketData,
@@ -148,7 +148,7 @@ class BaseResearchAgent:
         return Citation(
             source=source,
             url=url,
-            retrieved_at=datetime.utcnow(),
+            retrieved_at=datetime.now(timezone.utc),
             raw_data_hash=response.get_hash()
         )
 
@@ -207,10 +207,19 @@ class SentimentAnalysisAgent(BaseResearchAgent):
     async def analyze_platform(
         self, 
         platform: str, 
-        query:  str,
-        task: ResearchTask
+        query: str,
+        task: Optional[ResearchTask] = None
     ) -> Optional[SentimentAnalysis]:
         """Analyze sentiment on a specific platform with fallback"""
+        if task is None:
+            task = ResearchTask(
+                task_id="sentiment_analysis",
+                task_type="sentiment",
+                query=query,
+                target_entities=[query],
+                required_tools=["analyze_sentiment"],
+                success_criteria="Analyze sentiment"
+            )
         response, provenance = await self.execute_with_retry_and_fallback(
             task,
             "analyze_sentiment",
@@ -240,8 +249,17 @@ class SentimentAnalysisAgent(BaseResearchAgent):
 class RegulatoryAnalysisAgent(BaseResearchAgent):
     """Agent specialized in regulatory compliance research"""
     
-    async def check_region(self, region: str, task: ResearchTask) -> Optional[RegulatoryStatus]:
+    async def check_region(self, region: str, task: Optional[ResearchTask] = None) -> Optional[RegulatoryStatus]:
         """Check regulatory status for a region with fallback"""
+        if task is None:
+            task = ResearchTask(
+                task_id="regulatory_check",
+                task_type="regulatory",
+                query=f"Check {region} regulations",
+                target_entities=[region],
+                required_tools=["check_regulatory_compliance"],
+                success_criteria="Obtain regulatory status"
+            )
         response, provenance = await self.execute_with_retry_and_fallback(
             task,
             "check_regulatory_compliance",

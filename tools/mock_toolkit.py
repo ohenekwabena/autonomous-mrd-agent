@@ -66,8 +66,10 @@ class MockToolkit:
         """Mock Sensor Tower API for app store analytics"""
         await asyncio.sleep(0.1)  # Simulate API latency
         
+        app_normalized = app_name.lower().strip() if isinstance(app_name, str) else str(app_name).lower()
+        
         # Simulate different responses based on app
-        if app_name.lower() == "triumph":
+        if "triumph" in app_normalized:
             return ToolResponse(
                 success=True,
                 data={
@@ -80,7 +82,7 @@ class MockToolkit:
                 },
                 raw_response='{"status": "ok", "data": {...}}'
             )
-        elif app_name.lower() == "skillz":
+        elif "skillz" in app_normalized:
             return ToolResponse(
                 success=True,
                 data={
@@ -94,10 +96,18 @@ class MockToolkit:
                 raw_response='{"status": "ok", "data": {...}}'
             )
         else:
-            # Simulate no data found
+            # Return generic success for other apps
             return ToolResponse(
-                success=False,
-                error_message=f"No data found for app: {app_name}"
+                success=True,
+                data={
+                    "app_name": app_name,
+                    "monthly_downloads": 500000,
+                    "revenue_estimate": "$1.5M/month",
+                    "category_rank": 25,
+                    "user_retention_30d": 0.25,
+                    "note": "Estimated based on category averages"
+                },
+                raw_response='{"status": "ok", "data": {...}}'
             )
     
     @staticmethod
@@ -132,6 +142,9 @@ class MockToolkit:
         """Mock regulatory compliance check (regulatory database API)"""
         await asyncio.sleep(0.15)
         
+        region_normalized = region.upper() if isinstance(region, str) else str(region).upper()
+        
+        # More flexible matching - handle variations
         regulations = {
             "UK": {
                 "status": "requires_license",
@@ -140,26 +153,64 @@ class MockToolkit:
                 "restrictions": ["Age verification required", "No credit card deposits"],
                 "recent_changes": "2024 white paper tightening rules on advertising"
             },
+            "GB": {  # Alternative for UK
+                "status": "requires_license",
+                "authority": "UK Gambling Commission",
+                "license_types": ["Remote Gambling License"],
+                "restrictions": ["Age verification required", "No credit card deposits"],
+                "recent_changes": "2024 white paper tightening rules on advertising"
+            },
             "EU": {
-                "status": "varies_by_country",
+                "status": "gray_area",
                 "note": "Each member state has different regulations",
                 "generally_legal": ["Malta", "Gibraltar", "Isle of Man"],
                 "restricted": ["Germany", "Netherlands", "France"]
             },
+            "EUROPE": {
+                "status": "gray_area",
+                "note": "Each European country has different regulations",
+                "generally_legal": ["Malta", "Gibraltar", "Isle of Man"],
+                "restricted": ["Germany", "Netherlands", "France"]
+            },
             "US": {
-                "status": "varies_by_state",
+                "status": "gray_area",
                 "legal_states": ["NJ", "PA", "MI", "WV"],
                 "skill_gaming_distinction": "Skill games may be exempt in some states"
-            }
+            },
+            "USA": {
+                "status": "gray_area",
+                "legal_states": ["NJ", "PA", "MI", "WV"],
+                "skill_gaming_distinction": "Skill games may be exempt in some states"
+            },
         }
         
-        if region.upper() in regulations:
+        # Try exact match first
+        if region_normalized in regulations:
             return ToolResponse(
                 success=True,
-                data=regulations[region.upper()],
+                data=regulations[region_normalized],
                 raw_response=f'{{"region": "{region}", ...}}'
             )
-        return ToolResponse(success=False, error_message=f"No regulatory data for region: {region}")
+        
+        # Try partial match (starts with)
+        for key, data in regulations.items():
+            if region_normalized.startswith(key) or key.startswith(region_normalized[:2]):
+                return ToolResponse(
+                    success=True,
+                    data=data,
+                    raw_response=f'{{"region": "{region}", ...}}'
+                )
+        
+        # Fallback - return generic data
+        return ToolResponse(
+            success=True,
+            data={
+                "status": "unknown",
+                "region": region,
+                "note": "Region not in primary database, may require further research"
+            },
+            raw_response=f'{{"region": "{region}", ...}}'
+        )
     
     @staticmethod
     async def web_search(query: str) -> ToolResponse:
