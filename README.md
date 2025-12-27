@@ -10,13 +10,14 @@ flowchart TD
     end
 
     subgraph Orchestration Layer - State Machine
-        RP --> |Plan| HITL1{Human Approval? }
+        RP --> |Plan| HITL1{Human Approval?}
         HITL1 --> |Approved| SM[State Manager]
         HITL1 --> |Rejected| RP
         
         SM --> |RESEARCH| RO[Research Orchestrator]
         SM --> |SYNTHESIS| SO[Synthesis Orchestrator]
         SM --> |VALIDATION| VO[Validation Orchestrator]
+        SM --> |HUMAN_REVIEW| HR{Human Review?}
         SM --> |COMPLETE| OUT[Output Handler]
     end
 
@@ -40,7 +41,7 @@ flowchart TD
         TC --> SC[social_scraper]
     end
 
-    subgraph Validation & Error Handling
+    subgraph Validation & Error Handling (Research Data)
         TC --> |Results| DV[Data Validator]
         DV --> |Valid| SM
         DV --> |Invalid/Empty| RH[Retry Handler]
@@ -51,12 +52,17 @@ flowchart TD
 
     subgraph Synthesis Layer
         SO --> MG[MRD Generator]
-        MG --> SV[Schema Validator]
-        SV --> |Valid| HITL2{Human Review?}
+        MG --> SV[Schema Validator (structure)]
+        SV --> |Valid| SM
         SV --> |Invalid| MG
-        HITL2 --> |Approved| OUT
-        HITL2 --> |Revisions| SO
     end
+
+    %% MRD validation and review flow
+    VO --> |Approved| SM
+    VO --> |Revise| SO
+    VO --> |Needs Review| HR
+    HR --> |Approved| SM
+    HR --> |Revisions| SO
 
     subgraph Output
         OUT --> JSON[(Structured JSON)]
@@ -66,7 +72,7 @@ flowchart TD
 
     style SM fill:#e1f5fe
     style HITL1 fill:#fff3e0
-    style HITL2 fill:#fff3e0
+    style HR fill:#fff3e0
     style DV fill:#e8f5e9
 ```
 

@@ -1,0 +1,982 @@
+# Autonomous MRD Agent - Complete System Flow Explanation
+
+## Overview
+This document provides a detailed, stage-by-stage explanation of how the autonomous Market Requirements Document (MRD) generation system works in a live production environment. Each stage is explained with what happens, why it happens, and what data flows between stages.
+
+---
+
+## STAGE 1: INPUT LAYER
+
+### 1.1 User Prompt Reception
+**What happens:**
+- User submits a natural language request like "I want to create a fitness app targeting millennials"
+- The system receives the raw prompt and creates a new session with unique `session_id`
+- Initial `OrchestratorContext` object is created with state = `PLANNING`
+
+**Live System Behavior:**
+- Timestamp is recorded for audit trail
+- Session ID (UUID) is generated to track this entire workflow
+- User authentication/authorization checks would occur
+- Rate limiting checks to prevent abuse
+
+**Data Created:**
+```python
+OrchestratorContext(
+    session_id="2bd94dac",
+    current_state=AgentState.PLANNING,
+    user_prompt="I want to create a fitness app targeting millennials",
+    transitions=[],
+    errors=[]
+)
+```
+
+### 1.2 Prompt Interpreter
+**What happens:**
+- An LLM (Gemini) analyzes the user's intent
+- Extracts key entities: app type, target audience, geographic focus
+- Identifies implicit requirements (e.g., "fitness app" implies health tracking, social features)
+- Produces an `interpreted_goal` that clarifies what the agent understands
+
+**Live System Behavior:**
+- Uses prompt engineering with few-shot examples to extract structured data
+- Handles ambiguous prompts by making reasonable assumptions
+- Flags uncertainties for human review (e.g., "No geographic region specified - assuming global market")
+
+**Example Output:**
+```
+interpreted_goal: "Generate a comprehensive MRD for a mobile fitness tracking 
+application targeting millennial users (ages 25-40) in North American markets, 
+with focus on competitive analysis against MyFitnessPal, Strava, and Fitbit."
+```
+
+### 1.3 Research Plan Generator
+**What happens:**
+- Based on the interpreted goal, generates a `ResearchPlan` object
+- Creates 4-8 specific `ResearchTask` objects, each with:
+  - Unique task_id for tracking
+  - Task type (market, competitor, sentiment, regulatory, gap_analysis)
+  - Specific query/question to answer
+  - Required tools to use
+  - Success criteria
+  - Timeout and retry limits
+
+**Live System Behavior:**
+- Estimates time to complete (e.g., 15-30 minutes)
+- Selects appropriate research agents based on user intent
+- Prioritizes tasks (some can run in parallel, others depend on earlier results)
+
+**Example Research Plan:**
+```python
+ResearchPlan(
+    plan_id="plan_abc123",
+    user_intent="I want to create a fitness app targeting millennials",
+    interpreted_goal="...",
+    tasks=[
+        ResearchTask(
+            task_id="task_001",
+            task_type="market",
+            query="What is the total addressable market for fitness apps in North America?",
+            required_tools=["web_search", "search_sensor_tower"],
+            success_criteria="Retrieve market size in USD and YoY growth rate"
+        ),
+        ResearchTask(
+            task_id="task_002",
+            task_type="competitor",
+            query="Analyze top 5 fitness apps: features, pricing, user reviews",
+            target_entities=["MyFitnessPal", "Strava", "Fitbit", "Nike Training Club", "Peloton"],
+            required_tools=["search_sensor_tower", "social_scraper"],
+            success_criteria="Profile at least 3 competitors with MAU and revenue estimates"
+        ),
+        # ... more tasks
+    ],
+    estimated_duration_minutes=25
+)
+```
+
+---
+
+## STAGE 2: ORCHESTRATION LAYER - HUMAN APPROVAL CHECKPOINT
+
+### 2.1 Human-in-the-Loop Approval (HITL1)
+**What happens:**
+- State machine pauses at `HUMAN_REVIEW` state
+- System presents the research plan to user for approval:
+  - Shows interpreted goal for confirmation
+  - Lists all tasks that will be executed
+  - Shows estimated cost/time
+- Waits for user decision: Approve, Reject, or Modify
+
+**Live System Behavior:**
+- Web UI displays research plan in human-readable format
+- User can:
+  - **Approve**: Proceeds to RESEARCH state
+  - **Reject**: Returns to PLANNING, agent re-generates plan
+  - **Modify**: User edits specific tasks, plan is updated
+- Timeout mechanism: if no response in X minutes, plan is auto-approved for autonomous mode
+
+**State Transition:**
+```python
+StateTransition(
+    from_state=AgentState.PLANNING,
+    to_state=AgentState.RESEARCH,
+    timestamp=datetime.utcnow(),
+    reason="Research plan approved by user",
+    metadata={"plan_id": "plan_abc123", "tasks_count": 6}
+)
+```
+
+---
+
+## STAGE 3: RESEARCH ORCHESTRATION
+
+### 3.1 State Manager Activates Research Mode
+**What happens:**
+- `Orchestrator.transition_to()` is called with `AgentState.RESEARCH`
+- State transition rules are checked via `StateTransitionRules.can_transition_to_research()`
+- If valid, state changes and Research Orchestrator is invoked
+
+**Live System Behavior:**
+- System logs state change for debugging
+- Allocates compute resources for parallel agent execution
+- Sets up result aggregation queues
+
+### 3.2 Research Orchestrator Dispatches Tasks
+**What happens:**
+- Reads all `ResearchTask` objects from the plan
+- Identifies which tasks can run in parallel (no dependencies)
+- Dispatches tasks to appropriate specialized agents:
+  - Market Analysis tasks → Market Analysis Agent
+  - Competitor tasks → Competitor Analysis Agent
+  - Sentiment tasks → Sentiment Analysis Agent
+  - Regulatory tasks → Regulatory Analysis Agent
+
+**Live System Behavior:**
+- Uses async/await for parallel execution
+- Each agent runs in its own execution context
+- Progress is tracked: "Completed 3/6 tasks..."
+
+---
+
+## STAGE 4: RESEARCH AGENTS POOL
+
+### 4.1 Market Analysis Agent
+**What happens:**
+- Receives market-related tasks
+- Calls Tool Coordinator with required tools:
+  - `web_search("fitness app market size 2025")`
+  - `search_sensor_tower("fitness category trends")`
+- Parses raw data into structured `MarketData` object
+- Creates `VerifiedClaim` objects for each assertion
+- Attaches `Citation` objects with source URLs and timestamps
+
+**Live System Behavior:**
+```python
+# Agent executes:
+raw_data = await web_search("fitness app market size 2025")
+claim = VerifiedClaim(
+    claim="Global fitness app market valued at $4.4B in 2024",
+    confidence=ConfidenceLevel.HIGH,
+    citations=[
+        Citation(
+            source=DataSource.WEB_SEARCH,
+            url="https://www.statista.com/...",
+            retrieved_at=datetime.utcnow(),
+            raw_data_hash="sha256:abc123..."
+        )
+    ]
+)
+```
+
+**Output:**
+```python
+MarketData(
+    market_size_usd=4_400_000_000,
+    growth_rate_percent=17.5,
+    key_trends=[
+        VerifiedClaim(claim="AI-powered workout plans gaining traction", ...),
+        VerifiedClaim(claim="Integration with wearables is table stakes", ...)
+    ]
+)
+```
+
+### 4.2 Competitor Analysis Agent
+**What happens:**
+- Receives list of competitors to analyze
+- For each competitor:
+  - Calls `search_sensor_tower()` for download stats, revenue, ratings
+  - Calls `social_scraper()` for user reviews and complaints
+  - Calls `web_search()` for feature lists and pricing
+- Synthesizes data into `CompetitorProfile` objects
+- Identifies strengths and weaknesses as `VerifiedClaim` objects
+
+**Live System Behavior:**
+```python
+# Example for MyFitnessPal
+profile = CompetitorProfile(
+    name="MyFitnessPal",
+    app_store_id="com.myfitnesspal.android",
+    monthly_active_users=50_000_000,
+    revenue_estimate="$100M-$150M annually",
+    key_features=["Calorie tracking", "Barcode scanner", "Exercise logging"],
+    strengths=[
+        VerifiedClaim(
+            claim="Largest food database with 14M+ items",
+            confidence=ConfidenceLevel.HIGH,
+            citations=[Citation(source=DataSource.SENSOR_TOWER, url="...")]
+        )
+    ],
+    weaknesses=[
+        VerifiedClaim(
+            claim="Users complain about intrusive ads in free version",
+            confidence=ConfidenceLevel.MEDIUM,
+            citations=[Citation(source=DataSource.SOCIAL_SENTIMENT, url="...")]
+        )
+    ]
+)
+```
+
+### 4.3 Sentiment Analysis Agent
+**What happens:**
+- Scrapes social media (Twitter, Reddit, App Store reviews)
+- Runs sentiment classification on text samples
+- Calculates positive/negative/neutral ratios
+- Identifies common themes in complaints and praise
+
+**Live System Behavior:**
+```python
+sentiment = SentimentAnalysis(
+    platform="Reddit - r/fitness",
+    sample_size=5000,
+    positive_ratio=0.32,
+    negative_ratio=0.45,
+    neutral_ratio=0.23,
+    top_positive_themes=["Motivation features", "Community support"],
+    top_negative_themes=["Too many ads", "Privacy concerns", "Paywall frustration"],
+    citation=Citation(source=DataSource.SOCIAL_SENTIMENT, ...)
+)
+```
+
+### 4.4 Regulatory Analysis Agent
+**What happens:**
+- Checks regulatory databases for health app compliance requirements
+- Researches GDPR, HIPAA, FDA guidelines per region
+- Identifies legal requirements (e.g., medical device classification)
+
+**Live System Behavior:**
+```python
+regulatory = RegulatoryStatus(
+    region="US",
+    legal_status="requires_license",
+    license_requirements=["HIPAA compliance if storing health data", "FDA approval if making medical claims"],
+    restrictions=["Cannot diagnose medical conditions", "Must include disclaimer"],
+    confidence=ConfidenceLevel.MEDIUM,
+    citation=Citation(source=DataSource.REGULATORY_DB, ...)
+)
+```
+
+---
+
+## STAGE 5: TOOL LAYER - MOCKED INTERFACES
+
+### 5.1 Tool Coordinator
+**What happens:**
+- Acts as a router between agents and external tools
+- Receives tool calls from agents
+- In production: Makes real API calls to services
+- In current system: Returns mock data that resembles real responses
+
+**Live System Behavior (Production):**
+```python
+async def search_sensor_tower(query: str) -> dict:
+    # Real implementation would:
+    # 1. Make authenticated API call to Sensor Tower
+    # 2. Handle rate limiting
+    # 3. Parse JSON response
+    # 4. Cache results to avoid duplicate API calls
+    response = await httpx.get(
+        "https://api.sensortower.com/v1/search",
+        headers={"Authorization": f"Bearer {SENSOR_TOWER_API_KEY}"},
+        params={"q": query}
+    )
+    return response.json()
+```
+
+**Current Mock Behavior:**
+```python
+# Returns realistic fake data for testing
+return {
+    "apps": [
+        {"name": "MyFitnessPal", "downloads": "50M+", "rating": 4.5},
+        {"name": "Strava", "downloads": "10M+", "rating": 4.6}
+    ]
+}
+```
+
+### 5.2 Available Tools
+Each tool has a specific purpose:
+
+- **search_sensor_tower**: App store analytics, download stats, revenue estimates
+- **analyze_sentiment**: Social media sentiment analysis
+- **check_regulatory_compliance**: Legal/regulatory database queries
+- **web_search**: General web search for market reports, news articles
+- **social_scraper**: Reddit, Twitter, review site scraping
+
+---
+
+## STAGE 6: VALIDATION & ERROR HANDLING
+
+### 6.1 Data Validator
+**What happens:**
+- Every tool response flows through validation
+- Checks:
+  - Is data non-empty?
+  - Does it match expected schema?
+  - Are required fields present?
+  - Are data types correct?
+- Returns validation result: Valid or Invalid
+
+**Live System Behavior:**
+```python
+# Example validation check
+def validate_tool_response(response: dict, expected_schema: type[BaseModel]) -> tuple[bool, str]:
+    if not response:
+        return False, "Empty response from tool"
+    
+    try:
+        validated = expected_schema(**response)
+        return True, "Valid"
+    except ValidationError as e:
+        return False, f"Schema validation failed: {e}"
+```
+
+### 6.2 Retry Handler
+**What happens when validation fails:**
+- Checks retry count for this task (max 3 retries typically)
+- If retries available:
+  - Increments retry counter
+  - Waits with exponential backoff (1s, 2s, 4s)
+  - Re-dispatches task to Tool Coordinator
+- If max retries exhausted:
+  - Activates Fallback Strategy
+
+**Live System Behavior:**
+```python
+retry_counts["task_002"] = 1  # First retry
+await asyncio.sleep(2 ** retry_counts["task_002"])  # Wait 2 seconds
+# Retry with modified query or different tool
+```
+
+### 6.3 Fallback Strategy
+**What happens when all retries fail:**
+- Marks task as failed
+- Adds to `failed_tasks` list in context
+- Options:
+  1. **Partial completion**: Continue with available data
+  2. **Alternative source**: Try a different tool/agent
+  3. **Lower confidence**: Mark as UNVERIFIED but include inferred data
+  4. **Human escalation**: Pause and request human help
+
+**Live System Behavior:**
+```python
+context.failed_tasks.append("task_002")
+context.errors.append("Could not retrieve competitor revenue data - API timeout")
+
+# Continue with partial data
+context.research_aggregate.calculate_completeness()
+# Result: 0.7 (70% complete) - still above threshold of 0.6
+```
+
+---
+
+## STAGE 7: RETURNING TO STATE MANAGER
+
+### 7.1 Data Completeness Check
+**What happens:**
+- All agent tasks complete (or fail after retries)
+- Results aggregated into `ResearchAggregate` object
+- `calculate_completeness()` method runs:
+  - Market data present? +20%
+  - At least 3 competitors analyzed? +20%
+  - Sentiment data present? +20%
+  - Regulatory data present? +20%
+  - Gap analysis complete? +20%
+
+**Live System Behavior:**
+```python
+research_aggregate = ResearchAggregate(
+    plan_id="plan_abc123",
+    market_data=MarketData(...),
+    competitors=[CompetitorProfile(...), CompetitorProfile(...), CompetitorProfile(...)],
+    sentiment_analyses=[SentimentAnalysis(...)],
+    regulatory_statuses=[RegulatoryStatus(...)],
+    gap_analysis=[GapAnalysisItem(...), ...],
+    failed_tasks=["task_007"],  # One task failed
+    data_completeness_score=0.0  # Will be calculated
+)
+
+completeness = research_aggregate.calculate_completeness()
+# Result: 0.8 (80% complete)
+```
+
+### 7.2 State Transition Decision
+**What happens:**
+- State Manager calls `StateTransitionRules.can_transition_to_synthesis()`
+- Rule checks:
+  - Is research_aggregate not None? ✓
+  - Is completeness >= 0.6? ✓ (0.8 >= 0.6)
+- Decision: **PROCEED TO SYNTHESIS**
+
+**If completeness was < 0.6:**
+- System would either:
+  1. Retry failed tasks with different approach
+  2. Request human input for missing data
+  3. Abort and report insufficient data
+
+---
+
+## STAGE 8: SYNTHESIS LAYER
+
+### 8.1 Synthesis Orchestrator Activation
+**What happens:**
+- State transitions to `AgentState.SYNTHESIS`
+- Research data is now locked (read-only)
+- MRD Generator is invoked with the `ResearchAggregate`
+
+### 8.2 MRD Generator
+**What happens:**
+- Uses LLM (Gemini) with structured prompts to synthesize research into MRD sections
+- Generates each section of `StrategicAnalysis` object:
+
+**Section-by-section generation:**
+
+#### Executive Summary
+```python
+# LLM Prompt:
+"Based on this research data, write a 200-word executive summary for a fitness app MRD targeting millennials. Focus on market opportunity, competition, and key recommendations."
+
+# Output:
+executive_summary = """
+The North American fitness app market presents a $1.2B opportunity with 17.5% YoY growth. 
+Despite saturation with established players (MyFitnessPal, Strava), significant gaps exist 
+in AI-powered personalization and non-intrusive monetization. Target millennial users 
+(25-40) show frustration with ad-heavy free tiers and desire more intelligent workout 
+recommendations. Regulatory landscape is manageable with standard HIPAA compliance. 
+Recommended strategy: Launch with freemium model emphasizing AI coaching, integrate with 
+popular wearables, and focus on community-driven motivation features.
+"""
+```
+
+#### Competitive Landscape Analysis
+```python
+# Synthesizes CompetitorProfile objects into competitive insights
+competitive_moat_analysis=[
+    VerifiedClaim(
+        claim="Top 3 incumbents control 65% of market share",
+        confidence=ConfidenceLevel.HIGH,
+        citations=[...]  # Inherited from research data
+    ),
+    VerifiedClaim(
+        claim="No major player offers AI-powered adaptive workout plans",
+        confidence=ConfidenceLevel.MEDIUM,
+        citations=[...]
+    )
+]
+```
+
+#### SWOT Analysis
+```python
+swot = SWOTAnalysis(
+    strengths=[
+        VerifiedClaim(
+            claim="Fresh entrant can leverage latest AI/ML advancements",
+            confidence=ConfidenceLevel.MEDIUM,
+            citations=[...]
+        )
+    ],
+    weaknesses=[
+        VerifiedClaim(
+            claim="No existing user base or brand recognition",
+            confidence=ConfidenceLevel.HIGH,
+            citations=[Citation(source=DataSource.INFERRED, ...)]
+        )
+    ],
+    opportunities=[
+        VerifiedClaim(
+            claim="Growing millennial demand for mental health + fitness integration",
+            confidence=ConfidenceLevel.HIGH,
+            citations=[...]  # From sentiment analysis
+        )
+    ],
+    threats=[
+        VerifiedClaim(
+            claim="Apple Fitness+ expanding features may commoditize market",
+            confidence=ConfidenceLevel.MEDIUM,
+            citations=[...]
+        )
+    ]
+)
+```
+
+#### Feature Recommendations
+```python
+# Derived from gap analysis and competitor weaknesses
+feature_recommendations=[
+    FeatureRecommendation(
+        feature_name="AI Workout Coach",
+        description="Machine learning model that adapts workout plans based on user progress, injuries, and goals",
+        priority="must_have",
+        rationale=[
+            VerifiedClaim(
+                claim="72% of surveyed users want more personalized workout plans",
+                confidence=ConfidenceLevel.HIGH,
+                citations=[...]
+            )
+        ],
+        estimated_effort="high",
+        competitive_advantage="No incumbent offers true adaptive AI coaching"
+    ),
+    FeatureRecommendation(
+        feature_name="Ad-free freemium tier",
+        description="Free tier with no ads, monetize through premium AI features",
+        priority="should_have",
+        rationale=[
+            VerifiedClaim(
+                claim="45% negative sentiment mentions intrusive ads in MyFitnessPal",
+                confidence=ConfidenceLevel.HIGH,
+                citations=[...]
+            )
+        ],
+        estimated_effort="low",
+        competitive_advantage="Differentiation from ad-heavy competitors"
+    )
+]
+```
+
+#### Go-To-Market Strategy
+```python
+gtm_strategy = GoToMarketStrategy(
+    primary_channels=[
+        VerifiedClaim(
+            claim="Instagram fitness influencer partnerships",
+            confidence=ConfidenceLevel.MEDIUM,
+            citations=[Citation(source=DataSource.INFERRED, ...)]
+        ),
+        VerifiedClaim(
+            claim="Reddit community engagement in r/fitness, r/loseit",
+            confidence=ConfidenceLevel.HIGH,
+            citations=[...]  # From sentiment analysis
+        )
+    ],
+    geographic_rollout=["US", "Canada", "UK"],
+    regulatory_considerations=["HIPAA compliance required for US launch"]
+)
+```
+
+**Live System Behavior:**
+- MRD generation takes 2-5 minutes depending on data volume
+- LLM calls are batched where possible
+- Each section generation is retried if Pydantic validation fails
+- Citations from research are preserved and linked
+
+### 8.3 Schema Validator
+**What happens:**
+- Complete `StrategicAnalysis` object is validated against Pydantic schema
+- Checks:
+  - All required fields present?
+  - All citations have sources?
+  - SWOT has at least 1 item per category?
+  - Feature recommendations have rationale?
+  - No duplicate claims?
+
+**Live System Behavior:**
+```python
+try:
+    mrd = StrategicAnalysis(
+        mrd_id=str(uuid.uuid4()),
+        executive_summary=exec_summary,
+        swot=swot,
+        feature_recommendations=features,
+        # ... all sections
+    )
+    validation_result = MRDValidationResult(
+        is_valid=True,
+        errors=[],
+        warnings=[],
+        recommendation="approve"
+    )
+except ValidationError as e:
+    validation_result = MRDValidationResult(
+        is_valid=False,
+        errors=[str(e)],
+        recommendation="revise"
+    )
+    # Returns to MRD Generator for fixes
+```
+
+### 8.4 Data Quality Assessment
+**What happens:**
+- Scans entire MRD for low-confidence claims
+- Counts unverified claims
+- Generates warnings for human review
+
+**Live System Behavior:**
+```python
+unverified_count = 0
+low_confidence_count = 0
+claims_requiring_verification = []
+
+# Scan all VerifiedClaim objects in MRD
+for claim in mrd.all_claims():  # Helper method
+    if claim.confidence == ConfidenceLevel.UNVERIFIED:
+        unverified_count += 1
+        claims_requiring_verification.append(claim.claim)
+    elif claim.confidence == ConfidenceLevel.LOW:
+        low_confidence_count += 1
+
+validation_result.unverified_claims_count = unverified_count
+validation_result.low_confidence_claims_count = low_confidence_count
+
+if unverified_count > 5:
+    validation_result.warnings.append(
+        f"{unverified_count} unverified claims - consider additional research"
+    )
+    validation_result.recommendation = "revise"  # Requires human review
+```
+
+---
+
+## STAGE 9: HUMAN REVIEW CHECKPOINT (HITL2)
+
+### 9.1 MRD Presentation to User
+**What happens:**
+- State transitions to `HUMAN_REVIEW`
+- System generates human-readable presentation of MRD:
+  - Markdown formatted document
+  - JSON export for developers
+  - Interactive web dashboard showing confidence levels
+- Highlights sections with low confidence for review
+
+**Live System Behavior:**
+- Web UI shows:
+  - ✓ 45 high-confidence claims (green)
+  - ⚠ 12 medium-confidence claims (yellow)
+  - ✗ 3 unverified claims (red - highlighted for review)
+- User can:
+  - Click any claim to see citations/sources
+  - Edit claims directly
+  - Add their own research
+  - Request re-generation of specific sections
+
+### 9.2 User Decision Flow
+**Three possible outcomes:**
+
+#### A. Approved → Proceed to Output
+```python
+# User clicks "Approve"
+context.current_state = AgentState.COMPLETE
+# Proceeds to Stage 10
+```
+
+#### B. Revisions Requested → Back to Synthesis
+```python
+# User provides feedback: "Add more detail on pricing strategy"
+user_feedback = "Expand GTM section with pricing tiers and competitor pricing analysis"
+
+# System returns to SYNTHESIS state
+context.current_state = AgentState.SYNTHESIS
+context.revision_instructions = user_feedback
+
+# Synthesis Orchestrator re-runs with additional constraints
+```
+
+#### C. Rejected → Abort
+```python
+# User clicks "Reject" - entire MRD is discarded
+context.current_state = AgentState.ERROR
+context.errors.append("MRD rejected by user")
+# Optionally start over from PLANNING
+```
+
+---
+
+## STAGE 10: OUTPUT STAGE
+
+### 10.1 Output Handler Activation
+**What happens:**
+- State transitions to `COMPLETE`
+- Output Handler receives validated, approved `StrategicAnalysis` object
+- Generates multiple output formats
+
+### 10.2 Structured JSON Export
+**What happens:**
+```python
+# Save to file
+json_output = mrd.model_dump_json(indent=2)
+filepath = f"output/mrd_{mrd.mrd_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+
+with open(filepath, 'w') as f:
+    f.write(json_output)
+
+# Example: output/mrd_2bd94dac_20251227_143022.json
+```
+
+**File contents:**
+```json
+{
+  "mrd_id": "2bd94dac",
+  "generated_at": "2025-12-27T14:30:22Z",
+  "version": "1.0",
+  "overall_confidence": "high",
+  "executive_summary": "The North American fitness app market...",
+  "market_overview": [
+    {
+      "claim": "Global fitness app market valued at $4.4B in 2024",
+      "confidence": "high",
+      "citations": [
+        {
+          "source": "web_search",
+          "url": "https://www.statista.com/...",
+          "retrieved_at": "2025-12-27T14:15:33Z"
+        }
+      ]
+    }
+  ],
+  "competitor_list": [...],
+  "swot": {...},
+  "feature_recommendations": [...],
+  "gtm_strategy": {...}
+}
+```
+
+### 10.3 Markdown Document Export
+**What happens:**
+```python
+# Generate human-readable markdown
+markdown_output = generate_markdown_from_mrd(mrd)
+filepath = f"output/mrd_{mrd.mrd_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+
+with open(filepath, 'w') as f:
+    f.write(markdown_output)
+```
+
+**Example output structure:**
+```markdown
+# Market Requirements Document
+**Generated:** December 27, 2025
+**MRD ID:** 2bd94dac
+
+## Executive Summary
+The North American fitness app market presents...
+
+## Market Analysis
+### Market Size
+- Total Addressable Market: $4.4B [Source: Statista]
+- Growth Rate: 17.5% YoY [Source: App Annie]
+
+## Competitive Landscape
+### Key Competitors
+#### MyFitnessPal
+- MAU: 50M
+- Revenue: $100M-$150M
+- Strengths:
+  - Largest food database (14M+ items) [HIGH confidence]
+...
+```
+
+### 10.4 Database Storage
+**What happens in production:**
+```python
+# Save to PostgreSQL/MongoDB
+async def save_to_database(mrd: StrategicAnalysis):
+    # Main MRD record
+    mrd_record = {
+        "mrd_id": mrd.mrd_id,
+        "generated_at": mrd.generated_at,
+        "user_id": context.user_id,
+        "session_id": context.session_id,
+        "data": mrd.model_dump()
+    }
+    await db.mrds.insert_one(mrd_record)
+    
+    # Store citations separately for querying
+    for claim in mrd.all_claims():
+        for citation in claim.citations:
+            await db.citations.insert_one({
+                "mrd_id": mrd.mrd_id,
+                "claim": claim.claim,
+                "source": citation.source,
+                "url": citation.url,
+                "retrieved_at": citation.retrieved_at
+            })
+    
+    # Index for search
+    await db.mrds.create_index([
+        ("mrd_id", 1),
+        ("generated_at", -1),
+        ("user_id", 1)
+    ])
+```
+
+### 10.5 API Response
+**What happens:**
+```python
+# Return to client application
+return {
+    "status": "success",
+    "mrd_id": "2bd94dac",
+    "download_urls": {
+        "json": "https://storage.../mrd_2bd94dac.json",
+        "markdown": "https://storage.../mrd_2bd94dac.md",
+        "pdf": "https://storage.../mrd_2bd94dac.pdf"
+    },
+    "metadata": {
+        "research_time_seconds": 1247,
+        "data_completeness": 0.85,
+        "confidence_summary": {
+            "high": 45,
+            "medium": 12,
+            "low": 0,
+            "unverified": 3
+        }
+    }
+}
+```
+
+---
+
+## STAGE 11: POST-COMPLETION ACTIVITIES
+
+### 11.1 Audit Trail Generation
+**What happens:**
+```python
+# Generate complete audit log
+audit_log = {
+    "session_id": context.session_id,
+    "user_prompt": context.user_prompt,
+    "state_transitions": [t.model_dump() for t in context.transitions],
+    "research_tasks_executed": len(context.research_plan.tasks),
+    "research_tasks_failed": len(context.research_aggregate.failed_tasks),
+    "total_duration_seconds": (datetime.utcnow() - context.transitions[0].timestamp).total_seconds(),
+    "llm_calls": {
+        "planning": 2,
+        "research": 8,
+        "synthesis": 15
+    },
+    "api_costs_usd": 0.47  # Based on token usage
+}
+
+await db.audit_logs.insert_one(audit_log)
+```
+
+### 11.2 Cleanup
+**What happens:**
+- Temporary data is cleared from memory
+- Cache entries expire after 24 hours
+- Session context is archived
+- Compute resources are released
+
+---
+
+## ERROR HANDLING SCENARIOS
+
+### Scenario 1: API Timeout
+**What happens:**
+1. Tool call to Sensor Tower times out after 30 seconds
+2. Retry Handler catches timeout exception
+3. Retries with exponential backoff (2s, 4s, 8s)
+4. After 3 failures, marks task as failed
+5. System continues with partial data if completeness > 0.6
+
+### Scenario 2: Invalid MRD Schema
+**What happens:**
+1. MRD Generator creates StrategicAnalysis object
+2. Pydantic validation fails: "SWOT must have at least 1 strength"
+3. Error is logged: `validation_result.errors.append(...)`
+4. System returns to MRD Generator with error message
+5. LLM regenerates missing section
+6. Validation retried (max 3 attempts)
+
+### Scenario 3: Low Data Completeness
+**What happens:**
+1. Research completes with only 40% completeness
+2. `StateTransitionRules.can_transition_to_synthesis()` returns `False, "Insufficient data"`
+3. System options:
+   - **Option A**: Retry failed tasks with different tools
+   - **Option B**: Request human input for missing data
+   - **Option C**: Lower threshold and proceed with warnings
+4. Decision logged in state transitions
+
+---
+
+## PERFORMANCE CHARACTERISTICS
+
+### Timing Expectations (Live System)
+- **Planning Phase**: 10-30 seconds (LLM call + human approval wait)
+- **Research Phase**: 5-15 minutes (parallel agent execution)
+- **Synthesis Phase**: 2-5 minutes (LLM generation of MRD)
+- **Total**: 7-20 minutes for complete MRD generation
+
+### Resource Usage
+- **LLM Tokens**: ~50,000-100,000 tokens per MRD
+- **API Calls**: 20-40 external tool calls
+- **Memory**: ~500MB peak during research aggregation
+- **Storage**: ~500KB JSON + ~50KB markdown per MRD
+
+### Cost Estimation
+- **LLM Costs**: $0.30-$0.60 per MRD (Gemini pricing)
+- **API Costs**: $0.10-$0.20 (Sensor Tower, sentiment analysis)
+- **Total**: ~$0.40-$0.80 per MRD generation
+
+---
+
+## KEY DESIGN PRINCIPLES
+
+### 1. Traceability
+**Every claim is traceable to its source:**
+- All `VerifiedClaim` objects have `Citation` objects
+- Citations include URL, timestamp, and data hash
+- Audit trail records all state transitions
+- Users can click any claim to see original research
+
+### 2. Validation at Every Step
+**No invalid data propagates:**
+- Pydantic models validate all data structures
+- Schema Validator checks MRD completeness
+- Data Validator checks tool responses
+- State Transition Rules enforce business logic
+
+### 3. Human-in-the-Loop
+**Humans approve critical decisions:**
+- Research plan approval before spending API credits
+- MRD review before output to catch LLM hallucinations
+- Override capability at every checkpoint
+
+### 4. Graceful Degradation
+**System continues despite failures:**
+- Failed tasks don't abort entire workflow
+- Partial data is acceptable if above threshold
+- Fallback strategies for missing data
+- Clear warnings about low-confidence claims
+
+### 5. Auditability
+**Everything is logged:**
+- State transitions with reasons
+- All API calls and responses
+- Human approvals/rejections
+- Retry attempts and failures
+- Final data quality metrics
+
+---
+
+## CONCLUSION
+
+This autonomous MRD agent orchestrates a complex workflow involving:
+- **Natural language understanding** (prompt interpretation)
+- **Dynamic planning** (research task generation)
+- **Parallel execution** (multiple agents working simultaneously)
+- **Data validation** (Pydantic models at every step)
+- **Intelligent synthesis** (LLM-powered MRD generation)
+- **Human oversight** (HITL checkpoints)
+- **Structured output** (JSON/Markdown/Database)
+
+The result is a **production-ready, auditable, traceable** system that generates comprehensive market research documents automatically while maintaining data integrity and allowing human control over critical decisions.

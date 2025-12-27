@@ -1,0 +1,412 @@
+{
+  "mrd_id": "mrd-e43fd2bb",
+  "generated_at": "2025-12-26T12:42:56.400751",
+  "version": "1.0",
+  "overall_confidence": "high",
+  "executive_summary": "Market analysis reveals opportunity in skill-based gambling with strong competitive landscape. Key success factors: regulatory compliance, differentiated gameplay, and targeted marketing.",
+  "user_intent": "Build a skill-based gambling app for Europe, similar to Triumph",
+  "interpreted_goal": "Develop a skill-based gambling application tailored for the European market, drawing inspiration from existing platforms like Triumph while adhering to regional regulations and user preferences.",
+  "market_overview": [
+    {
+      "claim": "Skill-based gaming market growing 25-30% annually",
+      "confidence": "high",
+      "citations": [
+        {
+          "source": "web_search",
+          "url": null,
+          "retrieved_at": "2025-12-26T12:42:56.400227",
+          "raw_data_hash": null
+        },
+        {
+          "source": "sensor_tower",
+          "url": null,
+          "retrieved_at": "2025-12-26T12:42:56.400235",
+          "raw_data_hash": null
+        }
+      ]
+    }
+  ],
+  "market_size_assessment": null,
+  "growth_trajectory": null,
+  "competitor_list": [
+    {
+      "name": "DraftKings",
+      "app_store_id": null,
+      "monthly_active_users": null,
+      "revenue_estimate": null,
+      "key_features": [
+        "Multi-sport coverage",
+        "Mobile",
+        "Daily contests"
+      ],
+      "target_demographics": [],
+      "marketing_channels": [],
+      "strengths": [],
+      "weaknesses": [],
+      "data_freshness": "2025-12-26T12:42:56.400763"
+    },
+    {
+      "name": "FanDuel",
+      "app_store_id": null,
+      "monthly_active_users": null,
+      "revenue_estimate": null,
+      "key_features": [
+        "Fantasy sports",
+        "Sportsbook",
+        "Rewards program"
+      ],
+      "target_demographics": [],
+      "marketing_channels": [],
+      "strengths": [],
+      "weaknesses": [],
+      "data_freshness": "2025-12-26T12:42:56.400768"
+    }
+  ],
+  "competitive_moat_analysis": [
+    {
+      "claim": "Brand loyalty in regulated markets is strong",
+      "confidence": "medium",
+      "citations": [
+        {
+          "source": "sensor_tower",
+          "url": null,
+          "retrieved_at": "2025-12-26T12:42:56.400243",
+          "raw_data_hash": null
+        }
+      ]
+    }
+  ],
+  "swot": {
+    "strengths": [
+      {
+        "claim": "Clear regulatory framework in US",
+        "confidence": "high",
+        "citations": [
+          {
+            "source": "regulatory_db",
+            "url": null,
+            "retrieved_at": "2025-12-26T12:42:56.400247",
+            "raw_data_hash": null
+          },
+          {
+            "source": "web_search",
+            "url": null,
+            "retrieved_at": "2025-12-26T12:42:56.400249",
+            "raw_data_hash": null
+          }
+        ]
+      }
+    ],
+    "weaknesses": [
+      {
+        "claim": "High user acquisition costs",
+        "confidence": "medium",
+        "citations": [
+          {
+            "source": "web_search",
+            "url": null,
+            "retrieved_at": "2025-12-26T12:42:56.400259",
+            "raw_data_hash": null
+          }
+        ]
+      }
+    ],
+    "opportunities": [
+      {
+        "claim": "International expansion opportunities",
+        "confidence": "medium",
+        "citations": [
+          {
+            "source": "web_search",
+            "url": null,
+            "retrieved_at": "2025-12-26T12:42:56.400264",
+            "raw_data_hash": null
+          }
+        ]
+      }
+    ],
+    "threats": [
+      {
+        "claim": "Regulatory tightening risk",
+        "confidence": "high",
+        "citations": [
+          {
+            "source": "regulatory_db",
+            "url": null,
+            "retrieved_at": "2025-12-26T12:42:56.400268",
+            "raw_data_hash": null
+          },
+          {
+            "source": "web_search",
+            "url": null,
+            "retrieved_at": "2025-12-26T12:42:56.400270",
+            "raw_data_hash": null
+          }
+        ]
+      }
+    ]
+  },
+  "target_audiences": [
+    {
+      "segment_name": "Male gamers 18-35",
+      "demographics": {
+        "age": "18-35",
+        "gender": "male"
+      },
+      "psychographics": [
+        "Competitive",
+        "Mobile-first",
+        "Social"
+      ],
+      "acquisition_channels": [
+        {
+          "claim": "TikTok and streaming platforms",
+          "confidence": "medium",
+          "citations": [
+            {
+              "source": "social_sentiment",
+              "url": null,
+              "retrieved_at": "2025-12-26T12:42:56.400282",
+              "raw_data_hash": null
+            }
+          ]
+        }
+      ],
+      "estimated_tam": null
+    }
+  ],
+  "regulatory_analysis": [
+    {
+      "region": "US",
+      "legal_status": "requires_license",
+      "license_requirements": [
+        "State gaming commission approval required",
+        "Age verification mandatory"
+      ],
+      "restrictions": [
+        "No minors",
+        "Geo-fencing to legal states"
+      ],
+      "recent_changes": [
+        {
+          "claim": "State-level clarifications on skill gaming",
+          "confidence": "medium",
+          "citations": [
+            {
+              "source": "regulatory_db",
+              "url": null,
+              "retrieved_at": "2025-12-26T12:42:56.400293",
+              "raw_data_hash": null
+            }
+          ]
+        }
+      ],
+      "confidence": "high",
+      "citation": {
+        "source": "regulatory_db",
+        "url": null,
+        "retrieved_at": "2025-12-26T12:42:56.400297",
+        "raw_data_hash": null
+      }
+    },
+    {
+      "region": "EU",
+      "legal_status": "requires_license",
+      "license_requirements": [
+        "License required per jurisdiction",
+        "GDPR compliance"
+      ],
+      "restrictions": [
+        "Data residency as applicable"
+      ],
+      "recent_changes": [
+        {
+          "claim": "Ongoing updates in UK & Malta",
+          "confidence": "medium",
+          "citations": [
+            {
+              "source": "web_search",
+              "url": null,
+              "retrieved_at": "2025-12-26T12:42:56.400300",
+              "raw_data_hash": null
+            }
+          ]
+        }
+      ],
+      "confidence": "high",
+      "citation": {
+        "source": "regulatory_db",
+        "url": null,
+        "retrieved_at": "2025-12-26T12:42:56.400659",
+        "raw_data_hash": null
+      }
+    }
+  ],
+  "regulatory_recommendation": "Pursue US market first with state-by-state strategy. Prioritize UK and Malta for EU expansion.",
+  "gap_analysis": [
+    {
+      "opportunity": "AI-powered matchmaking",
+      "current_market_state": "Manual or basic matchmaking in existing platforms",
+      "potential_value": "high",
+      "implementation_complexity": "medium",
+      "supporting_evidence": [
+        {
+          "claim": "Competitive advantage opportunity",
+          "confidence": "medium",
+          "citations": [
+            {
+              "source": "web_search",
+              "url": null,
+              "retrieved_at": "2025-12-26T12:42:56.400666",
+              "raw_data_hash": null
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "feature_recommendations": [
+    {
+      "feature_name": "Responsible Gaming Controls",
+      "description": "Dashboard for spend limits and time management",
+      "priority": "must_have",
+      "rationale": [
+        {
+          "claim": "Regulatory requirement",
+          "confidence": "high",
+          "citations": [
+            {
+              "source": "regulatory_db",
+              "url": null,
+              "retrieved_at": "2025-12-26T12:42:56.400684",
+              "raw_data_hash": null
+            },
+            {
+              "source": "web_search",
+              "url": null,
+              "retrieved_at": "2025-12-26T12:42:56.400686",
+              "raw_data_hash": null
+            }
+          ]
+        }
+      ],
+      "estimated_effort": "medium",
+      "competitive_advantage": "Regulatory compliance"
+    },
+    {
+      "feature_name": "Tournament System",
+      "description": "Competitive multiplayer tournaments with prizes",
+      "priority": "should_have",
+      "rationale": [
+        {
+          "claim": "User engagement driver",
+          "confidence": "medium",
+          "citations": [
+            {
+              "source": "web_search",
+              "url": null,
+              "retrieved_at": "2025-12-26T12:42:56.400698",
+              "raw_data_hash": null
+            }
+          ]
+        }
+      ],
+      "estimated_effort": "high",
+      "competitive_advantage": "Unique engagement mechanic"
+    }
+  ],
+  "gtm_strategy": {
+    "primary_channels": [
+      {
+        "claim": "Paid social (TikTok, Instagram)",
+        "confidence": "medium",
+        "citations": [
+          {
+            "source": "social_sentiment",
+            "url": null,
+            "retrieved_at": "2025-12-26T12:42:56.400705",
+            "raw_data_hash": null
+          }
+        ]
+      },
+      {
+        "claim": "Influencer partnerships",
+        "confidence": "medium",
+        "citations": [
+          {
+            "source": "social_sentiment",
+            "url": null,
+            "retrieved_at": "2025-12-26T12:42:56.400708",
+            "raw_data_hash": null
+          }
+        ]
+      }
+    ],
+    "influencer_strategy": "Partner with gaming creators for tournament showcases",
+    "geographic_rollout": [
+      "US-CA",
+      "US-NJ",
+      "US-PA"
+    ],
+    "regulatory_considerations": [
+      "State-by-state licensing",
+      "Age verification & KYC"
+    ]
+  },
+  "key_risks": [
+    {
+      "claim": "Regulatory change or prohibition",
+      "confidence": "medium",
+      "citations": [
+        {
+          "source": "regulatory_db",
+          "url": null,
+          "retrieved_at": "2025-12-26T12:42:56.400713",
+          "raw_data_hash": null
+        }
+      ]
+    },
+    {
+      "claim": "Incumbent competition and market consolidation",
+      "confidence": "medium",
+      "citations": [
+        {
+          "source": "web_search",
+          "url": null,
+          "retrieved_at": "2025-12-26T12:42:56.400715",
+          "raw_data_hash": null
+        }
+      ]
+    },
+    {
+      "claim": "High user acquisition costs reducing profitability",
+      "confidence": "medium",
+      "citations": [
+        {
+          "source": "web_search",
+          "url": null,
+          "retrieved_at": "2025-12-26T12:42:56.400722",
+          "raw_data_hash": null
+        }
+      ]
+    }
+  ],
+  "mitigation_strategies": [
+    "Invest in regulatory affairs and government relations",
+    "Build defensible moat through unique mechanics",
+    "Focus on retention and lifetime value optimization"
+  ],
+  "data_sources_used": [
+    "market_research",
+    "competitor_analysis",
+    "regulatory_review"
+  ],
+  "claims_requiring_verification": [
+    "Market growth rates",
+    "User retention figures"
+  ],
+  "research_gaps": [
+    "Detailed TAM analysis",
+    "International market dynamics"
+  ]
+}
