@@ -41,7 +41,7 @@ flowchart TD
         TC --> SC[social_scraper]
     end
 
-    subgraph Validation & Error Handling (Research Data)
+    subgraph Validation and Error Handling
         TC --> |Results| DV[Data Validator]
         DV --> |Valid| SM
         DV --> |Invalid/Empty| RH[Retry Handler]
