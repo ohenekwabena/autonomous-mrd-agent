@@ -52,7 +52,7 @@ flowchart TD
 
     subgraph Synthesis Layer
         SO --> MG[MRD Generator]
-        MG --> SV[Schema Validator (structure)]
+        MG --> SV[Schema Validator]
         SV --> |Valid| SM
         SV --> |Invalid| MG
     end
