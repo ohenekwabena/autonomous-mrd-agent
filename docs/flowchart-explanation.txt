@@ -1,0 +1,545 @@
+================================================================================
+AUTONOMOUS MRD AGENT - FLOWCHART EXPLANATION
+================================================================================
+
+This document provides a detailed walkthrough of the system flow from user input
+through research, validation, synthesis, and final output generation.
+
+================================================================================
+📥 INPUT LAYER
+================================================================================
+
+Stage Overview:
+The input layer is where the user's raw request enters the system. It consists
+of two main components that transform the user's natural language prompt into
+a structured research plan.
+
+Components:
+  1. User Prompt (UP) - The starting point. User provides a text description
+     of what they want to build or analyze (e.g., "Build a skill-based gambling
+     app targeting young men in the European market").
+
+  2. Prompt Interpreter (PI) - Takes the raw user text and performs initial
+     parsing, entity extraction, and intent classification. It ensures the
+     prompt is well-formed and extracts key entities (e.g., "skill-based",
+     "gambling", "young men", "European market").
+
+  3. Research Plan Generator (RP) - Converts the interpreted prompt into a
+     structured ResearchPlan object. This component creates a list of specific,
+     actionable research tasks with success criteria, required tools, and
+     estimated duration. The plan is designed for downstream research agents
+     to execute methodically.
+
+Flow:
+  User Prompt → Prompt Interpreter → Research Plan Generator
+
+Output of This Stage:
+  - A ResearchPlan object containing:
+    * Original user intent (preserved for audit)
+    * Interpreted goal (agent's understanding for validation)
+    * List of ResearchTask objects with task IDs, types, queries, and success criteria
+    * Estimated duration in minutes
+
+================================================================================
+🤝 ORCHESTRATION LAYER - STATE MACHINE
+================================================================================
+
+Stage Overview:
+The orchestration layer is the "brain" of the system. It manages all state
+transitions, makes decisions about when to proceed between stages, and ensures
+that data quality thresholds are met before advancing.
+
+Key Components:
+
+  1. Human Approval Gate (HITL1) - First human-in-the-loop checkpoint.
+     Before research begins, a human reviews the generated plan. They can:
+     - APPROVE: Proceed with research using this plan
+     - REJECT: Send the plan back to the generator for revision
+
+  2. State Manager (SM) - The central orchestrator. After HITL1 approval,
+     all subsequent state transitions flow through SM. It routes to:
+     - RESEARCH state (Research Orchestrator)
+     - SYNTHESIS state (Synthesis Orchestrator)
+     - VALIDATION state (Validation Orchestrator)
+     - HUMAN_REVIEW state (if needed)
+     - COMPLETE state (Output Handler)
+
+     The State Manager monitors context, applies transition rules, and decides
+     when enough data is collected to move forward or when human review is needed.
+
+Flow Through Orchestration:
+  Research Plan → HITL1{Human Approval?}
+    ├─ APPROVED → State Manager
+    └─ REJECTED → loops back to Research Plan Generator
+
+  State Manager routes to:
+    ├─ RESEARCH (Research Orchestrator)
+    ├─ SYNTHESIS (Synthesis Orchestrator)
+    ├─ VALIDATION (Validation Orchestrator)
+    ├─ HUMAN_REVIEW (Human Review gate)
+    └─ COMPLETE (Output Handler)
+
+================================================================================
+🔬 RESEARCH AGENTS POOL
+================================================================================
+
+Stage Overview:
+Once research is approved, the Research Orchestrator (RO) spawns parallel
+research agents. Each agent is specialized for a specific type of data
+collection and analysis. They work concurrently to gather intelligence.
+
+Research Agents:
+
+  1. Market Analysis Agent (MA)
+     - Task: Determine market size, growth rate, trends, and barriers to entry
+     - Searches: Market reports, industry data, financial databases
+     - Output: MarketData (size in USD, growth %, key trends, success factors)
+
+  2. Competitor Analysis Agent (CA)
+     - Task: Identify and analyze direct/indirect competitors
+     - Searches: App stores, websites, financial reports, user reviews
+     - Output: CompetitorProfile list (name, MAU, revenue est., features, etc.)
+
+  3. Sentiment Analysis Agent (SA)
+     - Task: Analyze social sentiment and user perception
+     - Searches: Social media, reviews, forums, influencer mentions
+     - Output: SentimentAnalysis (positive/negative/neutral ratios, top themes)
+
+  4. Regulatory Analysis Agent (RA)
+     - Task: Assess compliance requirements and legal status by region
+     - Searches: Government databases, legal frameworks, licensing requirements
+     - Output: RegulatoryStatus list (legal status, requirements per region)
+
+Tool Coordinator (TC):
+  Acts as a dispatcher between agents and external tools. Each agent requests
+  data via TC, which coordinates tool calls and routes responses back.
+
+Flow:
+  Research Orchestrator
+    ├─ Market Analysis Agent
+    ├─ Competitor Analysis Agent
+    ├─ Sentiment Analysis Agent
+    └─ Regulatory Analysis Agent
+         ↓
+         All agents → Tool Coordinator
+
+Output of This Stage:
+  - Individual research outputs (MarketData, CompetitorProfile[], etc.)
+  - Each output is tagged with source, retrieval timestamp, and confidence level
+  - Outputs are ready for validation before aggregation
+
+================================================================================
+🛠️ TOOL LAYER - MOCKED INTERFACES
+================================================================================
+
+Stage Overview:
+The tool layer contains mocked implementations of external APIs and data sources.
+In production, these would call real APIs; in this system, they simulate
+responses for testing and demonstration purposes.
+
+Available Tools:
+
+  1. search_sensor_tower
+     - Simulates: Mobile app analytics platform (Sensor Tower, App Annie, etc.)
+     - Returns: App download counts, monthly active users, revenue estimates
+     - Mock Data: Returns pre-configured responses for known apps (Triumph, Skillz)
+
+  2. analyze_sentiment
+     - Simulates: Social media and sentiment analysis APIs
+     - Returns: Sentiment ratios (positive/negative/neutral), trending themes
+     - Mock Data: Platform-specific responses (TikTok, Twitter, Reddit, etc.)
+
+  3. check_regulatory_compliance
+     - Simulates: Legal and regulatory database queries
+     - Returns: Legal status by region, licensing requirements, restrictions
+     - Mock Data: Region-specific compliance data (UK, Germany, France, Spain, etc.)
+
+  4. web_search
+     - Simulates: General web search API (Google, Bing)
+     - Returns: Search results, articles, market reports
+     - Mock Data: Can return generic or context-specific results
+
+  5. social_scraper
+     - Simulates: Social media scraping API
+     - Returns: Trending topics, influencer mentions, user discussions
+     - Mock Data: Returns pre-configured social media data samples
+
+Tool Response Format:
+  All tools return ToolResponse objects containing:
+    - success (boolean)
+    - data (dict with actual results)
+    - error_message (if failed)
+    - raw_response (original response text for audit)
+
+Flow:
+  Tool Coordinator
+    ├─ search_sensor_tower
+    ├─ analyze_sentiment
+    ├─ check_regulatory_compliance
+    ├─ web_search
+    └─ social_scraper
+
+================================================================================
+✅ VALIDATION & ERROR HANDLING (RESEARCH DATA)
+================================================================================
+
+Stage Overview:
+This critical stage ensures research data quality before synthesis. Invalid or
+incomplete data triggers retries or fallback strategies to maintain output
+integrity.
+
+Components:
+
+  1. Data Validator (DV)
+     - Validates each tool response against schema expectations
+     - Checks: required fields present, data types correct, values in valid range
+     - Decision Logic:
+       ├─ VALID: Returns data to State Manager for aggregation
+       └─ INVALID/EMPTY: Routes to Retry Handler
+
+  2. Retry Handler (RH)
+     - Manages retry logic for failed tasks
+     - Tracks: retry count per task, timestamp of retries
+     - Decision Logic:
+       ├─ Retries remaining → Re-execute same tool query (Retry path)
+       └─ Max retries exhausted → Route to Fallback Strategy
+
+  3. Fallback Strategy (FB)
+     - Applies when retries are exhausted
+     - Options:
+       • Use partial/cached data if available
+       • Lower confidence levels on inferred data
+       • Continue with available data and flag gaps
+     - Returns degraded but still usable data to State Manager
+
+Flow:
+  Tool Coordinator outputs
+    ↓
+  Data Validator
+    ├─ Valid data → State Manager (proceed with synthesis)
+    └─ Invalid/Empty data → Retry Handler
+         ├─ Retry remaining → back to Tool Coordinator
+         └─ Max retries → Fallback Strategy → State Manager
+
+Error Handling Philosophy:
+  - Never block entire pipeline for single tool failure
+  - Always prefer partial data over no data
+  - Flag low-confidence results for human review
+  - Maintain audit trail of all retries and fallbacks
+
+Output of This Stage:
+  - Validated research data ready for aggregation
+  - Error logs and retry counts for audit
+  - Confidence scores adjusted based on retry history
+
+================================================================================
+📊 RESEARCH AGGREGATE (Implicit Stage)
+================================================================================
+
+Stage Overview:
+After all agents complete and validation passes, the research outputs are
+collected and aggregated into a single ResearchAggregate object. This object
+becomes the source of truth for synthesis.
+
+ResearchAggregate Contains:
+  - market_data: MarketData object with size, growth, trends
+  - competitors: List of CompetitorProfile objects
+  - sentiment_analyses: List of SentimentAnalysis by platform
+  - regulatory_statuses: List of RegulatoryStatus by region
+  - gap_analysis: Emerging opportunities and unmet needs
+  - failed_tasks: List of task IDs that couldn't be completed
+  - data_completeness_score: Float 0-1 indicating research coverage
+
+Completeness Calculation:
+  - Market data with trends: +1.0 point
+  - Competitor profiles (scaled 0-1): +1.0 point (3 competitors = full score)
+  - Sentiment analysis present: +1.0 point
+  - Regulatory data present: +1.0 point
+  - Gap analysis present: +1.0 point
+  → Final score = sum of all / 5
+
+Decision Gate (can_transition_to_synthesis):
+  If completeness_score >= 0.6 (60% threshold):
+    ✓ Proceed to synthesis
+  Else:
+    ✗ Stay in research, retry failed tasks
+
+================================================================================
+🎨 SYNTHESIS LAYER
+================================================================================
+
+Stage Overview:
+The synthesis layer transforms raw research data into a structured, narrative
+Market Requirements Document (MRD). It uses the research data to generate
+strategic recommendations, SWOT analysis, and go-to-market strategies.
+
+Components:
+
+  1. Synthesis Orchestrator (SO)
+     - Coordinates the MRD generation process
+     - Prepares research data for the MRD generator
+     - Handles revision loops if validation fails
+
+  2. MRD Generator (MG)
+     - Takes ResearchAggregate as input
+     - Generates StrategicAnalysis (complete MRD) containing:
+       * Executive summary (synthesized market opportunity)
+       * Market overview (size, growth, trends)
+       * Competitive landscape (moats, differentiation)
+       * SWOT analysis (strengths, weaknesses, opportunities, threats)
+       * Target audience segments (demographics, TAM)
+       * Feature recommendations (prioritized by value/effort)
+       * Regulatory recommendations (by region, phased rollout)
+       * Go-to-market strategy (channels, pricing, timeline)
+       * Risk assessment and mitigation strategies
+     - Uses narrative generation to explain findings in context
+
+  3. Schema Validator (SV)
+     - Validates MRD structure and completeness
+     - Checks: all required fields populated, no null values where prohibited
+     - Decision Logic:
+       ├─ VALID → Routes to State Manager for VALIDATION state
+       └─ INVALID → Re-routes to MRD Generator for retry
+
+Flow:
+  Research Aggregate
+    ↓
+  Synthesis Orchestrator → MRD Generator
+    ↓
+  Schema Validator
+    ├─ Valid → State Manager (proceed to VALIDATION)
+    └─ Invalid → loops back to MRD Generator
+
+Output of This Stage:
+  - StrategicAnalysis object (complete MRD)
+  - All recommendations backed by research claims
+  - Every claim tagged with confidence level and citations
+
+================================================================================
+🔍 VALIDATION ORCHESTRATOR (Business Logic Validation)
+================================================================================
+
+Stage Overview:
+After the MRD is structurally valid, the Validation Orchestrator (VO) performs
+business logic validation to ensure recommendations are sound and justified.
+
+Validation Checks:
+
+  1. Confidence Assessment
+     - Are HIGH-confidence claims properly sourced (2+ citations)?
+     - Are LOW/UNVERIFIED claims flagged for human review?
+     - Overall confidence score acceptable?
+
+  2. Data Consistency
+     - Do feature recommendations align with competitive analysis?
+     - Do market size estimates align with TAM in target segments?
+     - Are regulatory constraints reflected in GTM strategy?
+
+  3. Quality Checks
+     - Are all executives summary claims substantiated?
+     - Are SWOT items evidence-based?
+     - Are risk mitigations realistic given market conditions?
+
+Decision Outcomes:
+
+  ├─ APPROVED
+  │  Description: MRD is ready for output
+  │  Action: Routes to State Manager → COMPLETE state
+  │
+  ├─ REVISE
+  │  Description: Minor issues; needs regeneration with guidance
+  │  Action: Routes back to Synthesis Orchestrator for targeted revision
+  │
+  └─ NEEDS_REVIEW
+     Description: Critical issues or too many unverified claims
+     Action: Routes to HUMAN_REVIEW state for manual assessment
+
+Flow:
+  MRD from Synthesis
+    ↓
+  Validation Orchestrator (VO)
+    ├─ Approved → State Manager (proceed to COMPLETE)
+    ├─ Revise → Synthesis Orchestrator (retry with notes)
+    └─ Needs Review → Human Review gate
+
+Output of This Stage:
+  - MRDValidationResult object with:
+    * is_valid (boolean)
+    * errors (list of critical issues)
+    * warnings (list of minor issues)
+    * unverified_claims_count (count of low-confidence items)
+    * recommendation (approve/revise/reject)
+
+================================================================================
+👤 HUMAN REVIEW STATE (HITL2)
+================================================================================
+
+Stage Overview:
+If validation flags critical issues or too many unverified claims, a human
+reviews the MRD. The human can approve it as-is, request revisions, or reject it.
+
+Review Process:
+
+  1. Human receives MRD with:
+     - All validation warnings/errors flagged
+     - Unverified claims highlighted
+     - Confidence scores visible
+
+  2. Human decides:
+     ├─ APPROVED (as-is)
+     │  Action: Routes to State Manager → COMPLETE
+     │
+     ├─ REVISIONS NEEDED
+     │  Action: Routes back to Synthesis Orchestrator with feedback
+     │
+     └─ REJECTED
+        Action: Loops back to Research phase for additional data collection
+
+This checkpoint prevents flawed or low-confidence MRDs from being published.
+
+================================================================================
+📤 OUTPUT HANDLER & DELIVERY
+================================================================================
+
+Stage Overview:
+Once the MRD is approved (either by validation or human review), the output
+handler formats and delivers the final product across multiple channels.
+
+Output Formats Generated:
+
+  1. Structured JSON
+     - Contains: Full StrategicAnalysis object serialized to JSON
+     - Use: API responses, database storage, programmatic consumption
+     - File: saved to output/ directory with timestamp
+     - Format: Pretty-printed for readability, includes all metadata
+
+  2. Markdown Document
+     - Contains: Human-readable MRD with sections, formatting, lists
+     - Use: Sharing with stakeholders, documentation, blog publishing
+     - File: saved to output/ directory with timestamp
+     - Format: Organized by section (Executive Summary, Market, Competitive, etc.)
+
+  3. Database Record
+     - Contains: MRD stored as document in project database
+     - Use: Historical tracking, analytics, audit trail
+     - Metadata: Stored with session_id, timestamp, user_id, source data hash
+
+  4. API Response
+     - Contains: JSON response sent back to calling API client
+     - Use: Real-time delivery to web/mobile frontends
+     - Format: Includes success flag, data payload, metadata
+
+All outputs include:
+  - Data source attribution (which tools provided which claims)
+  - Confidence levels per claim
+  - Timestamps of generation
+  - Session ID for audit trail
+
+Flow to Output:
+  Approved MRD (from State Manager: COMPLETE)
+    ↓
+  Output Handler (OUT)
+    ├─ JSON[(Structured JSON)]
+    ├─ DB[(Database)]
+    ├─ Markdown Document
+    └─ API[API Response]
+
+Final Artifacts:
+  - output/mrd_[SESSION_ID]_[TIMESTAMP].json
+  - output/mrd_[SESSION_ID]_[TIMESTAMP].md
+  - Database record with full audit trail
+  - API response with HTTP 200 and payload
+
+================================================================================
+🔄 COMPLETE FLOW SUMMARY
+================================================================================
+
+User Input
+  ↓
+[📥 INPUT LAYER]
+  Prompt Interpreter → Research Plan Generator
+  ↓
+[🤝 ORCHESTRATION LAYER]
+  Human Approval (HITL1) → State Manager
+  ↓
+[🔬 RESEARCH AGENTS + 🛠️ TOOLS + ✅ VALIDATION]
+  4 Parallel Agents query tools → Data Validator → Aggregation
+  ↓
+[Decision: Enough data?]
+  No → Continue Research (retry failed tasks)
+  Yes → Proceed to Synthesis
+  ↓
+[🎨 SYNTHESIS LAYER]
+  Research Aggregate → MRD Generator → Schema Validator
+  ↓
+[🔍 VALIDATION ORCHESTRATOR]
+  Business logic checks → Confidence assessment
+  ↓
+[Decision: MRD valid?]
+  No/Needs Review → Human Review (HITL2) or Revision Loop
+  Yes → Proceed to Output
+  ↓
+[📤 OUTPUT HANDLER]
+  Generate JSON, Markdown, Database Record, API Response
+  ↓
+Complete MRD Delivered (JSON + Markdown + Database + API)
+
+================================================================================
+⚠️ ERROR HANDLING & RESILIENCE PATTERNS
+================================================================================
+
+The system is designed to be resilient:
+
+1. Research Phase Failures:
+   - Individual tool failures don't block pipeline
+   - Retry handler attempts recovery (up to 3-5 retries)
+   - Fallback strategy uses partial/cached data if available
+   - Failed task IDs tracked for human awareness
+
+2. Synthesis Validation Failures:
+   - Schema validation loops back to MRD Generator
+   - Allows targeted regeneration without full research restart
+   - Typically 1-2 retries sufficient
+
+3. Critical Issues:
+   - Unresolvable failures escalate to Human Review
+   - Humans decide: approve anyway, revise, or restart research
+   - All fallbacks logged for audit trail
+
+4. Max Iterations Safety Valve:
+   - System limits iterations to 50 to prevent infinite loops
+   - Exceeding limit transitions to ERROR state
+   - Error state triggers alerts and human investigation
+
+================================================================================
+📋 KEY DESIGN PRINCIPLES
+================================================================================
+
+1. Data Traceability
+   - Every claim is linked to its source(s)
+   - Each source has URL, retrieval timestamp, confidence level
+   - Audit trail preserved end-to-end
+
+2. Quality Thresholds
+   - Research completeness must reach 60% before synthesis
+   - Competitor data is mandatory (blocks if missing)
+   - Unverified claims flagged and counted
+
+3. Human-in-the-Loop Checkpoints
+   - HITL1: Plan approval before research begins
+   - HITL2: Complex MRD review before publication
+   - Humans can reject, revise, or approve at each gate
+
+4. Structured Data
+   - All outputs validated against Pydantic schemas
+   - No unstructured text left in critical data
+   - Database storage ensures schema consistency
+
+5. Graceful Degradation
+   - Prefer partial data over failure
+   - Retry logic with exponential backoff
+   - Fallback strategies minimize gaps
+
+================================================================================
+End of Document
+================================================================================

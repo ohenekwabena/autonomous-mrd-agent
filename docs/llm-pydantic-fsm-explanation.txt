@@ -1,0 +1,176 @@
+================================================================================
+LLM INTEGRATION, PYDANTIC VALIDATION, AND FSM DESIGN
+================================================================================
+
+This document explains:
+1) Where and how Large Language Models (LLMs) are integrated in the flow
+2) How Pydantic is used as the AI contract and data validator
+3) Why the system is designed as a finite state machine (FSM) and why it works
+ 
+References (source files):
+- Prompting/LLM client: adapters/gemini_client.py, adapters/research_generator.py
+- Models (schemas): models/core.py, models/mrd.py
+- Orchestrator (FSM): orchestration/state_machine.py
+- Research agents and tools: agents/research_agents.py, tools/mock_toolkit.py
+
+================================================================================
+SECTION 1 — LLM INTEGRATION POINTS
+================================================================================
+
+Overview:
+LLMs are used to interpret user intent, decompose work into research tasks,
+assist research agents with query generation and summarization, and synthesize
+validated research into a structured Market Requirements Document (MRD).
+
+Primary touchpoints:
+
+A. Input Layer (Prompt Interpreter and Plan Generation)
+- Purpose: Convert raw user prompt into a clear, actionable plan
+- How LLM helps:
+  • Intent interpretation: Extract entities, goals, constraints, and regions
+  • Task decomposition: Propose a set of ResearchTask items with success criteria
+  • Tool mapping: Suggest which tools (search, sentiment, regulatory) to use per task
+- Flow:
+  User Prompt → LLM (interpret) → Draft ResearchPlan → Human Approval (HITL1)
+
+B. Research Orchestrator and Agents
+- Purpose: Execute fact-finding tasks via tools while leveraging LLMs for:
+  • Query shaping: Turn task goals into precise tool queries
+  • Summarization: Turn raw tool outputs into concise, evidence-backed claims
+  • Gap analysis drafting: Suggest emerging opportunities from collected signals
+- Guardrails:
+  • All LLM-generated claims are required to include citations
+  • Confidence must be set according to evidence count and quality
+
+C. Synthesis Layer (MRD Generation)
+- Purpose: Produce a StrategicAnalysis (MRD) that is readable, structured, and actionable
+- How LLM helps:
+  • Narrative generation: Executive summary, market overview, SWOT, GTM
+  • Structure adherence: Output constrained to MRD schema sections
+- Guardrails:
+  • Schema Validator ensures the MRD is structurally valid
+  • Business Validation Orchestrator checks consistency, confidence, and policy alignment
+
+D. Validation Assistance (Optional)
+- Purpose: Support VO with heuristics
+- How LLM helps:
+  • Reason over consistency (e.g., do features align with market data?)
+  • Flag weak or unsubstantiated claims
+- Guardrails:
+  • VO decisions are rule-governed; LLM suggestions are advisory, never authoritative
+
+E. Human Review Support (HITL2)
+- Purpose: Provide readable summaries, highlight unverified claims, and suggest revisions
+- How LLM helps:
+  • Generate reviewer-friendly diffs and checklists
+  • Propose focused edits to improve validation scores
+
+Implementation note:
+- The repository includes a Gemini client (adapters/gemini_client.py) and a plan/research generator
+  (adapters/research_generator.py). These abstractions encapsulate prompt templates and parsing logic,
+  keeping orchestration and validation decoupled from the LLM backend.
+
+================================================================================
+SECTION 2 — PYDANTIC AS THE AI CONTRACT
+================================================================================
+
+Overview:
+Pydantic models are the contract between agent steps. They define required fields,
+validators, and confidence rules. LLM outputs are parsed and validated against
+these schemas, turning unstructured text into guaranteed-structure data.
+
+Key models and their roles:
+
+A. ResearchTask and ResearchPlan (models/core.py)
+- Ensure each task has: id, type, query, required_tools, success_criteria
+- Validate: No duplicate task IDs; timeouts and retry limits in safe ranges
+- Benefit: Plans are machine-checkable before work starts
+
+B. Evidence and Claims (Citation, VerifiedClaim)
+- Enforce traceability via source, URL, retrieval timestamp, and raw_data_hash
+- Validator: HIGH-confidence claims require ≥ 2 citations
+- Benefit: Confidence-driven quality; prevents ungrounded assertions
+
+C. Domain Structures (MarketData, CompetitorProfile, SentimentAnalysis, RegulatoryStatus)
+- Provide typed containers for research outputs (numbers, lists, enums)
+- Benefit: Downstream code can rely on types and presence of critical fields
+
+D. Aggregate and Completeness (ResearchAggregate)
+- Calculate data_completeness_score as a gate to synthesis
+- Benefit: Avoids hallucination by refusing to synthesize with insufficient data
+
+E. MRD Schema (StrategicAnalysis) and Validation Result (MRDValidationResult) (models/mrd.py)
+- StrategicAnalysis: Defines the entire MRD structure with sections and lists
+- MRDValidationResult: Records pass/fail, errors, warnings, counts of low/unverified claims
+- Benefit: Formalizes output deliverable; enables automated approval criteria
+
+How LLM outputs are validated:
+- Prompt the LLM to produce JSON conforming to a target Pydantic model
+- Parse JSON → instantiate Pydantic model → run validators
+- If validation fails: capture errors → request revision or fall back
+- Store both the parsed object and the raw JSON for audit and reproducibility
+
+“Pydantic AI” pattern (without extra runtime dependency):
+- Think of Pydantic as the AI boundary: LLM may generate text, but only
+  schema-conformant JSON is accepted.
+- This pattern yields safe, typed, and testable artifacts.
+
+================================================================================
+SECTION 3 — FINITE STATE MACHINE (FSM) DESIGN & RATIONALE
+================================================================================
+
+Overview:
+The system is implemented as a finite state machine managed by the Orchestrator
+(orchestration/state_machine.py). States: PLANNING → RESEARCH → SYNTHESIS →
+VALIDATION → HUMAN_REVIEW → COMPLETE (+ ERROR).
+
+Why an FSM:
+
+1. Determinism and Auditability
+- Each transition records: from_state, to_state, timestamp, reason
+- Enables reproducible runs and clear postmortems
+
+2. Quality Gates and Safety
+- Synthesis only occurs when completeness >= threshold and essential data exists
+- Validation gate prevents publishing low-confidence or inconsistent MRDs
+- Human Review gate ensures critical decisions are supervised
+
+3. Separation of Concerns
+- Handlers per state (planning, research, synthesis, validation) keep logic isolated
+- Tools, LLM prompting, and schema validation live in dedicated layers
+
+4. Resilience and Recovery
+- Retry Handler and Fallback Strategy operate cleanly within RESEARCH
+- Validation failure loops back to SYNTHESIS for focused fixes
+- Hard ceiling via max iterations to prevent runaway loops
+
+5. Scalability and Extensibility
+- Add new agents or tools without changing core orchestration semantics
+- Introduce new validation rules while preserving state flow
+
+Why it works in practice:
+- The FSM encodes the “contract of progression”:
+  • You can’t synthesize until research is sufficiently complete
+  • You can’t complete until validation (or human approval) passes
+  • You can’t skip human review when validation demands it
+- These gates translate qualitative AI outputs into quantifiable, enforceable steps.
+- The result is a consistent pipeline that combines AI creativity with engineering rigor.
+
+Operational details:
+- The Orchestrator’s _determine_next_state() applies explicit rules
+- _transition() logs the hop and reason, enabling precise debugging
+- run() iterates until COMPLETE or ERROR, with a safety cap on loop count
+
+================================================================================
+SUMMARY
+================================================================================
+
+- LLMs power interpretation, task planning, query shaping, summarization, and
+  MRD synthesis, but always under strict schema and validation constraints.
+- Pydantic provides the AI contract: every artifact is structured, validated,
+  and auditable; high-confidence claims require multiple citations.
+- The FSM governs progression with deterministic gates, ensuring the system
+  never publishes weak or unsubstantiated outputs and remains resilient under
+  failures and retries.
+
+End of Document
